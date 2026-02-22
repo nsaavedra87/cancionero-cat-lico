@@ -67,13 +67,13 @@ def procesar_texto_final(texto, semitonos):
     lineas_finales = []
     for linea in texto.split('\n'):
         if not linea.strip(): 
-            lineas_finales.append("&nbsp;")
+            lineas_finales.append(" ") # Espacio simple para mantener el salto
             continue
-        es_linea_acordes = (linea.count(" ") / len(linea)) > 0.2 if len(linea) > 6 else True
+        es_linea_acordes = (linea.count(" ") / len(linea)) > 0.15 if len(linea) > 6 else True
         partes = re.split(r"(\s+)", linea)
         procesada = "".join([p if p.strip() == "" else procesar_palabra_estricta(p, semitonos, es_linea_acordes) for p in partes])
-        lineas_finales.append(procesada.replace(" ", "&nbsp;"))
-    return "<br>".join(lineas_finales)
+        lineas_finales.append(procesada)
+    return "\n".join(lineas_finales)
 
 # --- INTERFAZ STREAMLIT ---
 st.set_page_config(page_title="ChordMaster Pro", layout="wide")
@@ -87,11 +87,20 @@ c_bg = st.sidebar.color_picker("Fondo Visor", "#FFFFFF")
 c_txt = st.sidebar.color_picker("Color Letra", "#000000")
 f_size = st.sidebar.slider("Tamaño Fuente", 12, 45, 19)
 
+# ESTILO CORREGIDO PARA RESPETAR ESPACIOS (white-space: pre)
 st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap');
-    .visor-musical {{ background-color: {c_bg} !important; color: {c_txt} !important; border-radius: 12px; padding: 25px; border: 1px solid #ddd; font-family: 'JetBrains Mono', monospace !important; line-height: 1.4; font-size: {f_size}px; }}
-    .visor-musical b {{ font-weight: 900 !important; color: inherit; white-space: nowrap; }}
+    .visor-musical {{ 
+        background-color: {c_bg} !important; 
+        color: {c_txt} !important; 
+        border-radius: 12px; padding: 25px; border: 1px solid #ddd; 
+        font-family: 'JetBrains Mono', monospace !important; 
+        line-height: 1.4; font-size: {f_size}px;
+        white-space: pre !important; /* CLAVE: Respeta espacios múltiples */
+        overflow-x: auto;
+    }}
+    .visor-musical b {{ font-weight: 900 !important; color: inherit; white-space: pre; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -121,7 +130,7 @@ if menu == "🏠 Cantar / Vivo":
 
         tp = st.number_input("Transportar", -6, 6, 0, key="tp_vivo")
         html_cuerpo = procesar_texto_final(data['Letra'], tp)
-        st.markdown(f'<div class="visor-musical"><h2 style="margin:0; color:inherit;">{data["Título"]}</h2><p style="margin:0; opacity:0.8;">{data["Autor"]} | {data["Categoría"]}</p><hr>{html_cuerpo}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="visor-musical"><b>{data["Título"]}</b>\n{data["Autor"]} | {data["Categoría"]}\n<hr style="border:0.5px solid {c_txt}; opacity:0.2;">\n{html_cuerpo}</div>', unsafe_allow_html=True)
 
 elif menu == "📋 Mi Setlist":
     st.header("📋 Mi Setlist")
@@ -129,33 +138,24 @@ elif menu == "📋 Mi Setlist":
         st.info("No hay canciones en el setlist.")
     else:
         for i, t in enumerate(st.session_state.setlist):
-            # Usamos un expander para permitir el acceso a la canción
             with st.expander(f"🎵 {i+1}. {t}"):
-                # Buscar datos de la canción
                 cancion_data = df[df['Título'] == t]
                 if not cancion_data.empty:
                     data = cancion_data.iloc[0]
                     col_info, col_del = st.columns([4, 1])
                     col_info.write(f"**Autor:** {data['Autor']} | **Categoría:** {data['Categoría']}")
-                    
-                    if col_del.button("🗑️ Quitar del Setlist", key=f"del_sl_{i}"):
+                    if col_del.button("🗑️ Quitar", key=f"del_sl_{i}"):
                         st.session_state.setlist.pop(i)
                         guardar_setlist(st.session_state.setlist); st.rerun()
                     
                     tp_sl = st.number_input("Transportar", -6, 6, 0, key=f"tp_sl_{i}")
-                    html_sl = procesar_texto_final(data['Letra'], tp_sl)
-                    st.markdown(f'<div class="visor-musical">{html_sl}</div>', unsafe_allow_html=True)
-                else:
-                    st.error("Canción no encontrada en la base de datos.")
-                    if st.button("Eliminar del setlist", key=f"err_{i}"):
-                        st.session_state.setlist.pop(i)
-                        guardar_setlist(st.session_state.setlist); st.rerun()
+                    st.markdown(f'<div class="visor-musical">{procesar_texto_final(data["Letra"], tp_sl)}</div>', unsafe_allow_html=True)
 
 elif menu == "➕ Agregar Canción":
     st.header("➕ Nueva Canción")
     c1, c2, c3 = st.columns(3)
     t_n, a_n, cat_n = c1.text_input("Título"), c2.text_input("Autor"), c3.selectbox("Categoría", categorias)
-    l_n = st.text_area("Letra y Acordes:", height=250)
+    l_n = st.text_area("Letra y Acordes:", height=250, help="Usa una fuente monoespaciada para alinear.")
     if l_n:
         st.subheader("👀 Vista Previa")
         st.markdown(f'<div class="visor-musical">{procesar_texto_final(l_n, 0)}</div>', unsafe_allow_html=True)
