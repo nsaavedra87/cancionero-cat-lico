@@ -8,7 +8,7 @@ DB_FILE = "cancionero.csv"
 CAT_FILE = "categorias.csv"
 SETLIST_FILE = "setlist_fijo.csv"
 
-# --- FUNCIONES DE DATOS (MANTENIDAS) ---
+# --- FUNCIONES DE DATOS ---
 def cargar_datos():
     try:
         if os.path.exists(DB_FILE) and os.path.getsize(DB_FILE) > 0:
@@ -52,24 +52,27 @@ def transportar_nota(nota, semitonos):
             return lista[idx]
     return nota
 
-def procesar_texto_final(texto, semitonos):
+def procesar_texto_definitivo(texto, semitonos):
     if not texto: return ""
     
-    # Patrón 1: Acordes complejos (ej: Fa#m7, DoM, Re7). Estos se marcan siempre.
-    patron_complejo = r"\b(Do#?|Re#?|Mi|Fa#?|Sol#?|La#?|Si|[A-G][#b]?)(m|M|maj7|7|9|sus4|add9|dim|aug)\b"
-    
-    # Patrón 2: Notas simples (ej: A, E, Do, Si). Solo se marcan si NO parecen letra.
-    patron_simple = r"\b(Do|Re|Mi|Fa|Sol|La|Si|[A-G])\b"
+    # ESTA ES LA CLAVE: Un patrón que captura TODO el acorde de una vez
+    # Captura: (Nota)(# o b)(m, M, maj7, etc.)
+    patron_acorde = r"\b(Do#?|Re#?|Mi|Fa#?|Sol#?|La#?|Si|[A-G][#b]?)(m|M|maj7|7|9|sus4|add9|dim|aug)?\b"
     
     def transformar(match):
-        nota_raiz = match.group(1)
-        ext = match.group(2) if len(match.groups()) > 1 and match.group(2) else ""
+        acorde_completo = match.group(0) # El texto completo (ej: "Fa#m7")
+        nota_raiz = match.group(1)       # Solo la raíz (ej: "Fa#")
+        extension = match.group(2) if match.group(2) else ""
         
+        if semitonos == 0:
+            return f"<b>{acorde_completo}</b>"
+        
+        # Si hay transposición, transportamos solo la raíz y pegamos la extensión
         dic_bemoles = {"Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#"}
         nota_busqueda = dic_bemoles.get(nota_raiz, nota_raiz)
+        nueva_raiz = transportar_nota(nota_busqueda, semitonos)
         
-        nueva = transportar_nota(nota_busqueda, semitonos)
-        return f"<b>{nueva}{ext}</b>"
+        return f"<b>{nueva_raiz}{extension}</b>"
 
     lineas_procesadas = []
     for linea in texto.split('\n'):
@@ -77,17 +80,17 @@ def procesar_texto_final(texto, semitonos):
             lineas_procesadas.append("&nbsp;")
             continue
             
-        # Detectamos si la línea es mayoritariamente de acordes o de letra
-        # Si la proporción de espacios es alta, es casi seguro una línea de acordes
-        es_linea_acordes = (linea.count(" ") / len(linea)) > 0.3 if len(linea) > 10 else True
+        # Filtro de seguridad para no confundir letra con acordes (basado en espacios)
+        es_linea_acordes = (linea.count(" ") / len(linea)) > 0.25 if len(linea) > 8 else True
         
         if es_linea_acordes:
-            # En líneas de acordes, aplicamos ambos patrones
-            l = re.sub(patron_complejo, transformar, linea)
-            l = re.sub(patron_simple, transformar, l)
+            # En líneas de acordes, marcamos todo lo que parezca nota
+            l = re.sub(patron_acorde, transformar, linea)
         else:
-            # En líneas de LETRA, solo aplicamos el complejo (ej: Fa#m7) para evitar errores con "A" o "Si"
-            l = re.sub(patron_complejo, transformar, linea)
+            # En líneas de letra, solo marcamos si tiene extensiones (ej: Do#m) 
+            # para evitar que el "¿A donde...?" o el "Si" de la frase se pongan negrita
+            patron_solo_complejos = r"\b(Do#?|Re#?|Mi|Fa#?|Sol#?|La#?|Si|[A-G][#b]?)(m|M|maj7|7|9|sus4|add9|dim|aug)+\b"
+            l = re.sub(patron_solo_complejos, transformar, linea)
             
         lineas_procesadas.append(l.replace(" ", "&nbsp;"))
         
@@ -115,9 +118,9 @@ st.markdown(f"""
     .visor-musical {{ 
         background-color: {c_bg} !important; 
         color: {c_txt} !important; 
-        border-radius: 12px; padding: 25px; border: 1px solid #ddd;
+        border-radius: 12px; padding: 30px; border: 1px solid #ddd;
         font-family: 'JetBrains Mono', monospace !important; 
-        line-height: 1.2; font-size: {f_size}px;
+        line-height: 1.4; font-size: {f_size}px;
     }}
     .visor-musical b {{ font-weight: 900 !important; color: inherit; }}
     </style>
@@ -126,10 +129,10 @@ st.markdown(f"""
 df = cargar_datos()
 categorias = cargar_categorias()
 
-# --- LÓGICA DE MÓDULOS ---
+# --- MÓDULOS ---
 if menu == "🏠 Cantar / Vivo":
     col_f1, col_f2 = st.columns([2, 1])
-    with col_f1: busqueda = st.text_input("🔍 Buscar...")
+    with col_f1: busqueda = st.text_input("🔍 Buscar canción...")
     with col_f2: filtro_cat = st.selectbox("📂 Categoría", ["Todas"] + categorias)
     
     df_v = df.copy()
@@ -150,7 +153,7 @@ if menu == "🏠 Cantar / Vivo":
                 st.toast("Añadida")
 
         tp = st.number_input("Transportar", -6, 6, 0)
-        final_html = procesar_texto_final(data['Letra'], tp)
+        final_html = procesar_texto_definitivo(data['Letra'], tp)
         st.markdown(f'<div class="visor-musical"><b>{data["Título"]}</b><br><small>{data["Autor"]}</small><hr>{final_html}</div>', unsafe_allow_html=True)
 
 elif menu == "📋 Mi Setlist":
