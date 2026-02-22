@@ -12,77 +12,65 @@ CAT_FILE = "categorias.csv"
 def cargar_datos():
     try:
         if os.path.exists(DB_FILE) and os.path.getsize(DB_FILE) > 0:
-            df = pd.read_csv(DB_FILE)
-            if not df.empty:
-                return df
-    except Exception:
-        pass
+            return pd.read_csv(DB_FILE)
+    except Exception: pass
     return pd.DataFrame(columns=["Título", "Autor", "Categoría", "Letra"])
 
 def cargar_categorias():
-    # PLAN C: Lista de emergencia (si el archivo falla por completo)
-    cat_emergencia = [
-        "Alabanza", "Adoracion", "Oracion", "Espiritu Santo", "Entrega", 
-        "Sanacion", "Amor de Dios", "Perdon", "Eucaristia-Entrada", 
-        "Eucaristia-Perdon", "Eucaristia-Gloria", "Eucaristia-Aclamacion", 
-        "Eucaristia Ofertorio", "Eucaristia-Santo", "Eucaristia-Cordero", 
-        "Eucaristia-Comunion", "Ecuaristia-Final", "Eucaristia-Maria", 
-        "Adviento", "Navidad", "Cuaresma"
-    ]
+    cat_emergencia = ["Alabanza", "Adoracion", "Oracion", "Espiritu Santo", "Entrega", "Sanacion", "Amor de Dios", "Perdon", "Eucaristia-Entrada", "Eucaristia-Perdon", "Eucaristia-Gloria", "Eucaristia-Aclamacion", "Eucaristia Ofertorio", "Eucaristia-Santo", "Eucaristia-Cordero", "Eucaristia-Comunion", "Ecuaristia-Final", "Eucaristia-Maria", "Adviento", "Navidad", "Cuaresma"]
     try:
         if os.path.exists(CAT_FILE) and os.path.getsize(CAT_FILE) > 5:
-            # PLAN A: Leer archivo CSV
             df_cat = pd.read_csv(CAT_FILE, on_bad_lines='skip')
-            if not df_cat.empty:
-                # Intentar por nombre de columna o por posición
-                if 'Nombre' in df_cat.columns:
-                    return df_cat['Nombre'].dropna().unique().tolist()
-                else:
-                    return df_cat.iloc[:, 0].dropna().unique().tolist()
-    except Exception:
-        pass
-    # PLAN B: Devolver lista predefinida si falla la carga
+            return df_cat.iloc[:, 0].dropna().unique().tolist()
+    except Exception: pass
     return cat_emergencia
 
 def guardar_datos(df):
     df.to_csv(DB_FILE, index=False)
 
-def guardar_categorias(lista):
-    pd.DataFrame(lista, columns=['Nombre']).to_csv(CAT_FILE, index=False)
-
-# --- LÓGICA DE TRANSPOSICIÓN ---
+# --- LÓGICA DE TRANSPOSICIÓN Y COLOR DE ACORDES ---
 NOTAS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
-def transponer_texto(texto, semitonos):
-    if semitonos == 0 or not texto: return texto
+def procesar_texto(texto, semitonos, color_acorde):
+    if not texto: return ""
+    # Patrón para detectar acordes
     patron = r"\b([A-G][#b]?(m|maj|7|9|sus\d|dim|aug|add\d)?)\b"
+    
     def reemplazar(match):
         acorde = match.group(1)
         match_nota = re.match(r"([A-G][#b]?)", acorde)
         nota_original = match_nota.group(1)
         dic_bemoles = {"Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#"}
         nota_base = dic_bemoles.get(nota_original, nota_original)
-        resto = acorde[len(nota_original):]
-        if nota_base in NOTAS:
+        
+        # Transposición
+        if nota_base in NOTAS and semitonos != 0:
             nueva_nota = NOTAS[(NOTAS.index(nota_base) + semitonos) % 12]
-            return nueva_nota + resto
-        return acorde
+            acorde = nueva_nota + acorde[len(nota_original):]
+        
+        # Aplicar color al acorde mediante HTML
+        return f'<span style="color:{color_acorde}; font-weight:bold;">{acorde}</span>'
+    
     return re.sub(patron, reemplazar, texto)
 
 # --- INTERFAZ ---
-st.set_page_config(page_title="ChordMaster Ultra v3", page_icon="🎸", layout="wide")
+st.set_page_config(page_title="ChordMaster Ultra v4", page_icon="🎸", layout="wide")
 
-st.markdown("""
+# Estilos CSS
+st.markdown(f"""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono&family=Roboto+Slab&family=Montserrat:wght@700&display=swap');
-    [data-testid="stHeader"] { visibility: hidden; }
-    .visor-musical {
-        border-radius: 20px;
-        padding: 40px;
-        box-shadow: 0px 10px 30px rgba(0,0,0,0.5);
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono&family=Montserrat:wght@700&display=swap');
+    [data-testid="stHeader"] {{ visibility: hidden; }}
+    .visor-musical {{
+        border-radius: 15px;
+        padding: 20px 30px;
+        box-shadow: 0px 5px 20px rgba(0,0,0,0.4);
         border: 1px solid #444;
         white-space: pre-wrap;
-    }
+        line-height: 1.4;
+    }}
+    .titulo-visor {{ font-family: 'Montserrat', sans-serif; margin-bottom: 2px; line-height: 1.1; }}
+    .autor-visor {{ color: #888; margin-bottom: 15px; font-size: 0.9em; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -92,80 +80,76 @@ df = cargar_datos()
 categorias = cargar_categorias()
 
 # --- SIDEBAR ---
-st.sidebar.title("🎸 ChordMaster Ultra")
-menu = st.sidebar.selectbox("Menú", ["🏠 Cantar / Vivo", "📸 Importar Foto", "📝 Registro Manual", "⚙️ Categorías", "📋 Setlist"])
+st.sidebar.title("🎸 ChordMaster Pro")
+menu = st.sidebar.selectbox("Menú", ["🏠 Cantar / Vivo", "➕ Agregar Canción", "📂 Gestionar Biblioteca", "⚙️ Categorías", "📋 Setlist"])
 
 st.sidebar.divider()
-st.sidebar.subheader("🎨 Estilo Escenario")
-c_bg = st.sidebar.color_picker("Fondo", "#121212")
-c_txt = st.sidebar.color_picker("Texto", "#00FF00")
-f_size = st.sidebar.slider("Tamaño de Letra", 18, 45, 24)
-f_family = st.sidebar.selectbox("Fuente", ["'JetBrains Mono', monospace", "'Roboto Slab', serif", "sans-serif"])
-
-if st.sidebar.button("📺 Pantalla Completa"):
-    st.components.v1.html("<script>window.parent.document.documentElement.requestFullscreen();</script>", height=0)
+st.sidebar.subheader("🎨 Paleta de Colores")
+c_bg = st.sidebar.color_picker("Fondo Visor", "#121212")
+c_txt = st.sidebar.color_picker("Color Letra", "#FFFFFF")
+c_chord = st.sidebar.color_picker("Color Acordes", "#00FF00")
+f_size = st.sidebar.slider("Tamaño Fuente", 16, 50, 22)
+f_family = st.sidebar.selectbox("Fuente", ["'JetBrains Mono', monospace", "sans-serif", "serif"])
 
 # --- LÓGICA DE MENÚS ---
 
-if menu == "⚙️ Categorías":
-    st.header("⚙️ Gestión de Categorías")
-    nueva_cat = st.text_input("Nueva Categoría")
-    if st.button("➕ Crear"):
-        if nueva_cat and nueva_cat not in categorias:
-            categorias.append(nueva_cat)
-            guardar_categorias(categorias)
-            st.success(f"'{nueva_cat}' añadida.")
-            st.rerun()
-    st.write("Categorías actuales:", categorias)
+if menu == "➕ Agregar Canción":
+    st.header("📝 Agregar al Repertorio")
+    metodo = st.radio("Método de entrada:", ["Escritura Manual", "Cámara / Foto (OCR)"], horizontal=True)
+    
+    texto_inicial = ""
+    if metodo == "Cámara / Foto (OCR)":
+        try:
+            import pytesseract
+            img_file = st.camera_input("Capturar hoja")
+            if img_file:
+                img = Image.open(img_file)
+                texto_inicial = pytesseract.image_to_string(img, lang='spa')
+        except: st.error("Motor OCR no disponible.")
 
-elif menu == "📝 Registro Manual":
-    st.header("📝 Nueva Canción")
-    with st.form("registro"):
-        t = st.text_input("Título")
-        a = st.text_input("Autor")
-        cat = st.selectbox("Categoría", categorias)
-        let = st.text_area("Letra y Acordes", height=300)
-        if st.form_submit_button("Guardar"):
-            if t and let:
-                nueva = pd.DataFrame([[t, a, cat, let]], columns=["Título", "Autor", "Categoría", "Letra"])
+    with st.container(border=True):
+        col1, col2 = st.columns(2)
+        t_n = col1.text_input("Título")
+        a_n = col2.text_input("Autor")
+        cat_n = st.selectbox("Categoría", categorias)
+        let_n = st.text_area("Letra y Acordes (Edita aquí)", value=texto_inicial, height=250)
+        
+        if t_n and let_n:
+            st.subheader("👀 Vista Previa (Revisa antes de guardar)")
+            preview = procesar_texto(let_n, 0, c_chord)
+            st.markdown(f"""<div class="visor-musical" style="background:{c_bg}; color:{c_txt}; font-size:{f_size}px; font-family:{f_family};">
+            <div class="titulo-visor">{t_n}</div><div class="autor-visor">{a_n}</div>{preview}</div>""", unsafe_allow_html=True)
+            
+            if st.button("✅ Confirmar y Guardar en Biblioteca"):
+                nueva = pd.DataFrame([[t_n, a_n, cat_n, let_n]], columns=df.columns)
                 df = pd.concat([df, nueva], ignore_index=True)
                 guardar_datos(df)
-                st.success("¡Guardada!")
-            else: st.warning("Título y letra requeridos.")
+                st.success("¡Canción guardada con éxito!")
 
-elif menu == "📸 Importar Foto":
-    st.header("📸 Escáner OCR")
-    try:
-        import pytesseract
-        img_file = st.camera_input("Foto del manuscrito")
-        if img_file:
-            img = Image.open(img_file)
-            with st.spinner("Leyendo imagen..."):
-                texto_ocr = pytesseract.image_to_string(img, lang='spa')
-                with st.form("ocr_edit"):
-                    t_f = st.text_input("Título", value="Nueva Escaneada")
-                    a_f = st.text_input("Autor", value="Desconocido")
-                    c_f = st.selectbox("Categoría", categorias)
-                    l_f = st.text_area("Texto detectado", value=texto_ocr, height=300)
-                    if st.form_submit_button("Confirmar Guardado"):
-                        nueva = pd.DataFrame([[t_f, a_f, c_f, l_f]], columns=df.columns)
-                        df = pd.concat([df, nueva], ignore_index=True)
-                        guardar_datos(df)
-                        st.success("¡Importado!")
-    except Exception:
-        st.error("Instalando motor OCR o cámara no disponible.")
+elif menu == "📂 Gestionar Biblioteca":
+    st.header("📂 Mi Biblioteca")
+    if not df.empty:
+        st.write("Selecciona canciones para eliminar:")
+        for i, row in df.iterrows():
+            col_t, col_b = st.columns([4, 1])
+            col_t.write(f"**{row['Título']}** - {row['Autor']} ({row['Categoría']})")
+            if col_b.button("🗑️ Eliminar", key=f"del_{i}"):
+                df = df.drop(i).reset_index(drop=True)
+                guardar_datos(df)
+                st.rerun()
+    else: st.info("Biblioteca vacía.")
 
 elif menu == "🏠 Cantar / Vivo":
     col_busq, col_cat = st.columns([2, 1])
-    with col_busq: busq = st.text_input("🔍 Buscar canción...")
-    with col_cat: fil_cat = st.multiselect("🏷️ Filtrar Categoría", categorias)
+    with col_busq: busq = st.text_input("🔍 Buscar canción o autor...")
+    with col_cat: fil_cat = st.multiselect("🏷️ Categorías", categorias)
 
     df_f = df.copy()
     if busq: df_f = df_f[df_f['Título'].str.contains(busq, case=False, na=False) | df_f['Autor'].str.contains(busq, case=False, na=False)]
     if fil_cat: df_f = df_f[df_f['Categoría'].isin(fil_cat)]
 
     if not df_f.empty:
-        sel = st.selectbox("Canción:", df_f['Título'])
+        sel = st.selectbox("Selecciona:", df_f['Título'])
         c_data = df_f[df_f['Título'] == sel].iloc[0]
         
         c1, c2, c3 = st.columns(3)
@@ -178,19 +162,28 @@ elif menu == "🏠 Cantar / Vivo":
         if scroll > 0:
             st.components.v1.html(f"<script>setInterval(()=>window.parent.scrollBy(0,1),{100/scroll});</script>", height=0)
 
-        letra_f = transponer_texto(c_data['Letra'], transp)
+        # Renderizado Final
+        letra_html = procesar_texto(c_data['Letra'], transp, c_chord)
         st.markdown(f"""
             <div class="visor-musical" style="background:{c_bg}; color:{c_txt}; font-size:{f_size}px; font-family:{f_family};">
-            <h1 style="color:white; font-family:'Montserrat', sans-serif; margin:0;">{c_data['Título']}</h1>
-            <p style="color:#888;">{c_data['Autor']} | {c_data['Categoría']}</p>
-            <hr style="border-color:#444;">
-            {letra_f}
+            <h2 class="titulo-visor" style="color:white;">{c_data['Título']}</h2>
+            <div class="autor-visor">{c_data['Autor']} | {c_data['Categoría']}</div>
+            {letra_html}
             </div>
         """, unsafe_allow_html=True)
-    else:
-        st.info("No hay canciones disponibles o no coinciden con la búsqueda.")
+    else: st.info("Usa los filtros para encontrar una canción.")
 
-elif menu == "📋 Mi Setlist":
+elif menu == "⚙️ Categorías":
+    st.header("⚙️ Gestión de Categorías")
+    nueva_cat = st.text_input("Nueva Categoría")
+    if st.button("➕ Crear"):
+        if nueva_cat and nueva_cat not in categorias:
+            categorias.append(nueva_cat)
+            pd.DataFrame(categorias, columns=['Nombre']).to_csv(CAT_FILE, index=False)
+            st.rerun()
+    st.write(categorias)
+
+elif menu == "📋 Setlist":
     st.header("📋 Mi Setlist")
     if st.session_state.setlist:
         for s in st.session_state.setlist: st.write(f"• {s}")
