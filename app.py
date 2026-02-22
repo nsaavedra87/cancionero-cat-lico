@@ -8,7 +8,7 @@ DB_FILE = "cancionero.csv"
 CAT_FILE = "categorias.csv"
 SETLIST_FILE = "setlist_fijo.csv"
 
-# --- FUNCIONES DE DATOS ---
+# --- FUNCIONES DE DATOS (MANTENIDAS) ---
 def cargar_datos():
     try:
         if os.path.exists(DB_FILE) and os.path.getsize(DB_FILE) > 0:
@@ -52,45 +52,54 @@ def transportar_nota(nota, semitonos):
             return lista[idx]
     return nota
 
-def procesar_texto_inteligente(texto, semitonos):
+def procesar_texto_final(texto, semitonos):
     if not texto: return ""
     
-    # Patrón mejorado: Detecta notas latinas y americanas con sostenidos, menores, séptimas, etc.
-    # Evita capturar letras sueltas dentro de palabras normales.
-    patron = r"\b(Do#?|Re#?|Mi|Fa#?|Sol#?|La#?|Si|[A-G][#b]?)(m|M|maj7|7|9|sus4|dim|aug|add9)?\b"
+    # Patrón 1: Acordes complejos (ej: Fa#m7, DoM, Re7). Estos se marcan siempre.
+    patron_complejo = r"\b(Do#?|Re#?|Mi|Fa#?|Sol#?|La#?|Si|[A-G][#b]?)(m|M|maj7|7|9|sus4|add9|dim|aug)\b"
     
-    def reemplazar(match):
+    # Patrón 2: Notas simples (ej: A, E, Do, Si). Solo se marcan si NO parecen letra.
+    patron_simple = r"\b(Do|Re|Mi|Fa|Sol|La|Si|[A-G])\b"
+    
+    def transformar(match):
         nota_raiz = match.group(1)
-        complemento = match.group(2) if match.group(2) else ""
+        ext = match.group(2) if len(match.groups()) > 1 and match.group(2) else ""
         
-        # Normalizar bemoles a sostenidos para la lógica de transporte
         dic_bemoles = {"Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#"}
-        nota_raiz_busqueda = dic_bemoles.get(nota_raiz, nota_raiz)
+        nota_busqueda = dic_bemoles.get(nota_raiz, nota_raiz)
         
-        nueva_nota = transportar_nota(nota_raiz_busqueda, semitonos)
-        acorde_final = nueva_nota + complemento
-        
-        # Devolvemos en negrita
-        return f"<b>{acorde_final}</b>"
-    
+        nueva = transportar_nota(nota_busqueda, semitonos)
+        return f"<b>{nueva}{ext}</b>"
+
     lineas_procesadas = []
     for linea in texto.split('\n'):
         if not linea.strip():
             lineas_procesadas.append("&nbsp;")
+            continue
+            
+        # Detectamos si la línea es mayoritariamente de acordes o de letra
+        # Si la proporción de espacios es alta, es casi seguro una línea de acordes
+        es_linea_acordes = (linea.count(" ") / len(linea)) > 0.3 if len(linea) > 10 else True
+        
+        if es_linea_acordes:
+            # En líneas de acordes, aplicamos ambos patrones
+            l = re.sub(patron_complejo, transformar, linea)
+            l = re.sub(patron_simple, transformar, l)
         else:
-            # Aplicamos el reemplazo y protegemos espacios
-            linea_html = re.sub(patron, reemplazar, linea)
-            lineas_procesadas.append(linea_html.replace(" ", "&nbsp;"))
+            # En líneas de LETRA, solo aplicamos el complejo (ej: Fa#m7) para evitar errores con "A" o "Si"
+            l = re.sub(patron_complejo, transformar, linea)
+            
+        lineas_procesadas.append(l.replace(" ", "&nbsp;"))
         
     return "<br>".join(lineas_procesadas)
 
-# --- INTERFAZ ---
+# --- INTERFAZ STREAMLIT ---
 st.set_page_config(page_title="ChordMaster Pro", layout="wide")
 
 if 'setlist' not in st.session_state:
     st.session_state.setlist = cargar_setlist()
 
-# --- SIDEBAR ---
+# Sidebar: Menú arriba
 st.sidebar.title("🎸 Menú")
 menu = st.sidebar.selectbox("Ir a:", ["🏠 Cantar / Vivo", "📋 Mi Setlist", "➕ Agregar Canción", "📂 Gestionar / Editar", "⚙️ Categorías"])
 
@@ -108,19 +117,16 @@ st.markdown(f"""
         color: {c_txt} !important; 
         border-radius: 12px; padding: 25px; border: 1px solid #ddd;
         font-family: 'JetBrains Mono', monospace !important; 
-        line-height: 1.3; font-size: {f_size}px;
+        line-height: 1.2; font-size: {f_size}px;
     }}
-    .visor-musical b {{
-        font-weight: 900 !important;
-        color: inherit;
-    }}
+    .visor-musical b {{ font-weight: 900 !important; color: inherit; }}
     </style>
     """, unsafe_allow_html=True)
 
 df = cargar_datos()
 categorias = cargar_categorias()
 
-# --- MÓDULO VIVO ---
+# --- LÓGICA DE MÓDULOS ---
 if menu == "🏠 Cantar / Vivo":
     col_f1, col_f2 = st.columns([2, 1])
     with col_f1: busqueda = st.text_input("🔍 Buscar...")
@@ -143,11 +149,10 @@ if menu == "🏠 Cantar / Vivo":
                 guardar_setlist(st.session_state.setlist)
                 st.toast("Añadida")
 
-        tp = st.number_input("Transportar (Semitonos)", -6, 6, 0)
-        final_html = procesar_texto_inteligente(data['Letra'], tp)
+        tp = st.number_input("Transportar", -6, 6, 0)
+        final_html = procesar_texto_final(data['Letra'], tp)
         st.markdown(f'<div class="visor-musical"><b>{data["Título"]}</b><br><small>{data["Autor"]}</small><hr>{final_html}</div>', unsafe_allow_html=True)
 
-# --- RESTO DE MÓDULOS (MANTENIDOS IGUAL) ---
 elif menu == "📋 Mi Setlist":
     st.header("📋 Mi Setlist")
     for i, t in enumerate(st.session_state.setlist):
@@ -157,8 +162,6 @@ elif menu == "📋 Mi Setlist":
             st.session_state.setlist.pop(i)
             guardar_setlist(st.session_state.setlist)
             st.rerun()
-    if st.button("🗑️ Vaciar"):
-        st.session_state.setlist = []; guardar_setlist([]); st.rerun()
 
 elif menu == "➕ Agregar Canción":
     st.header("➕ Nueva")
