@@ -54,16 +54,12 @@ def procesar_palabra_estricta(palabra, semitonos, es_linea_acordes):
         raiz, resto = match.group(1), match.group(2)
         if raiz in ["Si", "La", "A"] and not resto and not es_linea_acordes:
             return palabra
-        
-        # Transposición
-        nueva_nota = palabra
-        if semitonos != 0:
-            dic_bemoles = {"Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#"}
-            nota_busqueda = dic_bemoles.get(raiz, raiz)
-            nueva_raiz = transportar_nota(nota_busqueda, semitonos)
-            nueva_nota = f"{nueva_raiz}{resto}"
-            
-        return f"<b>{nueva_nota}</b>"
+        if semitonos == 0:
+            return f"<b>{palabra}</b>"
+        dic_bemoles = {"Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#"}
+        nota_busqueda = dic_bemoles.get(raiz, raiz)
+        nueva_raiz = transportar_nota(nota_busqueda, semitonos)
+        return f"<b>{nueva_raiz}{resto}</b>"
     return palabra
 
 def procesar_texto_final(texto, semitonos):
@@ -71,13 +67,13 @@ def procesar_texto_final(texto, semitonos):
     lineas_finales = []
     for linea in texto.split('\n'):
         if not linea.strip(): 
-            lineas_finales.append("") # Dejamos línea vacía real
+            lineas_finales.append("&nbsp;")
             continue
         es_linea_acordes = (linea.count(" ") / len(linea)) > 0.2 if len(linea) > 6 else True
         partes = re.split(r"(\s+)", linea)
         procesada = "".join([p if p.strip() == "" else procesar_palabra_estricta(p, semitonos, es_linea_acordes) for p in partes])
-        lineas_finales.append(procesada)
-    return "\n".join(lineas_finales) # Usamos saltos de línea reales
+        lineas_finales.append(procesada.replace(" ", "&nbsp;"))
+    return "<br>".join(lineas_finales)
 
 # --- INTERFAZ STREAMLIT ---
 st.set_page_config(page_title="ChordMaster Pro", layout="wide")
@@ -91,19 +87,11 @@ c_bg = st.sidebar.color_picker("Fondo Visor", "#FFFFFF")
 c_txt = st.sidebar.color_picker("Color Letra", "#000000")
 f_size = st.sidebar.slider("Tamaño Fuente", 12, 45, 19)
 
-# CSS CORREGIDO PARA EFECTO ESPEJO
 st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap');
-    .visor-musical {{ 
-        background-color: {c_bg} !important; 
-        color: {c_txt} !important; 
-        border-radius: 12px; padding: 25px; border: 1px solid #ddd; 
-        font-family: 'JetBrains Mono', monospace !important; 
-        line-height: 1.4; font-size: {f_size}px;
-        white-space: pre-wrap !important; /* Mantiene espacios y saltos de línea exactos */
-    }}
-    .visor-musical b {{ font-weight: 900 !important; color: inherit; }}
+    .visor-musical {{ background-color: {c_bg} !important; color: {c_txt} !important; border-radius: 12px; padding: 25px; border: 1px solid #ddd; font-family: 'JetBrains Mono', monospace !important; line-height: 1.4; font-size: {f_size}px; }}
+    .visor-musical b {{ font-weight: 900 !important; color: inherit; white-space: nowrap; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -141,7 +129,9 @@ elif menu == "📋 Mi Setlist":
         st.info("No hay canciones en el setlist.")
     else:
         for i, t in enumerate(st.session_state.setlist):
+            # Usamos un expander para permitir el acceso a la canción
             with st.expander(f"🎵 {i+1}. {t}"):
+                # Buscar datos de la canción
                 cancion_data = df[df['Título'] == t]
                 if not cancion_data.empty:
                     data = cancion_data.iloc[0]
@@ -155,6 +145,11 @@ elif menu == "📋 Mi Setlist":
                     tp_sl = st.number_input("Transportar", -6, 6, 0, key=f"tp_sl_{i}")
                     html_sl = procesar_texto_final(data['Letra'], tp_sl)
                     st.markdown(f'<div class="visor-musical">{html_sl}</div>', unsafe_allow_html=True)
+                else:
+                    st.error("Canción no encontrada en la base de datos.")
+                    if st.button("Eliminar del setlist", key=f"err_{i}"):
+                        st.session_state.setlist.pop(i)
+                        guardar_setlist(st.session_state.setlist); st.rerun()
 
 elif menu == "➕ Agregar Canción":
     st.header("➕ Nueva Canción")
@@ -163,7 +158,6 @@ elif menu == "➕ Agregar Canción":
     l_n = st.text_area("Letra y Acordes:", height=250)
     if l_n:
         st.subheader("👀 Vista Previa")
-        # El 0 asegura que no haya transposición en la vista previa
         st.markdown(f'<div class="visor-musical">{procesar_texto_final(l_n, 0)}</div>', unsafe_allow_html=True)
     if st.button("💾 Guardar"):
         if t_n and l_n:
@@ -194,3 +188,4 @@ elif menu == "⚙️ Categorías":
     if st.button("Añadir"):
         if n_cat and n_cat not in categorias:
             categorias.append(n_cat); guardar_categorias(categorias); st.rerun()
+
