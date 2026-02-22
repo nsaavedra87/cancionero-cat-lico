@@ -7,7 +7,6 @@ import re
 DB_FILE = "cancionero.csv"
 CAT_FILE = "categorias.csv"
 
-# --- FUNCIONES DE DATOS ---
 def cargar_datos():
     try:
         if os.path.exists(DB_FILE) and os.path.getsize(DB_FILE) > 0:
@@ -30,12 +29,11 @@ def guardar_datos(df):
 def guardar_categorias(lista_cat):
     pd.DataFrame(lista_cat, columns=["Nombre"]).to_csv(CAT_FILE, index=False)
 
-# --- LÓGICA DE TRANSPOSICIÓN Y COLOR (M/m) ---
+# --- LÓGICA DE TRANSPOSICIÓN Y COLOR CORREGIDA ---
 NOTAS_AMER = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 NOTAS_LAT = ["Do", "Do#", "Re", "Re#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"]
 
 def transportar_nota(nota, semitonos):
-    # Detectar sistema y transportar manteniendo integridad
     if nota in NOTAS_AMER:
         idx = (NOTAS_AMER.index(nota) + semitonos) % 12
         return NOTAS_AMER[idx]
@@ -47,51 +45,57 @@ def transportar_nota(nota, semitonos):
 def procesar_texto_estricto(texto, semitonos, color_acorde):
     if not texto: return ""
     
-    # PATRÓN DEFINITIVO: 
-    # Grupo 1: Nota Base (A-G o Do-Si) + alteración (# o b)
-    # Grupo 2: Modo/Complemento (M, m, maj, dim, etc.)
+    # Este patrón detecta la nota y el modo (m, M, 7, etc.)
     patron = r"\b(Do#?|Re#?|Mi|Fa#?|Sol#?|La#?|Si|[A-G][#b]?)([Mm]|maj7|maj|7|9|sus4|sus2|dim|aug|add9)?\b"
-    
-    def reemplazar(match):
-        nota_raiz = match.group(1)
-        modo_complemento = match.group(2) if match.group(2) else ""
-        
-        # Normalizar bemoles a sostenidos para el diccionario
-        dic_bemoles = {"Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#"}
-        nota_raiz_busqueda = dic_bemoles.get(nota_raiz, nota_raiz)
-        
-        # Transportar nota raíz
-        nueva_nota = transportar_nota(nota_raiz_busqueda, semitonos) if semitonos != 0 else nota_raiz
-        
-        # Unir con su modo (M o m)
-        acorde_final = nueva_nota + modo_complemento
-        
-        return f'<span style="color:{color_acorde}; font-weight:bold;">{acorde_final}</span>'
     
     lineas = texto.split('\n')
     lineas_procesadas = []
+
     for linea in lineas:
         if not linea.strip():
             lineas_procesadas.append("&nbsp;")
             continue
+
+        # Función interna para el reemplazo que maneja el color y transporte
+        def aplicar_estilo(match):
+            nota_raiz = match.group(1)
+            modo = match.group(2) if match.group(2) else ""
+            
+            # Normalizar bemoles para transporte
+            dic_bemoles = {"Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#"}
+            nota_raiz_busqueda = dic_bemoles.get(nota_raiz, nota_raiz)
+            
+            nueva_nota = transportar_nota(nota_raiz_busqueda, semitonos) if semitonos != 0 else nota_raiz
+            acorde_completo = nueva_nota + modo
+            
+            # EL TRUCO: Usamos inline-style con !important para forzar el color
+            return f'<span style="color:{color_acorde} !important; font-weight:bold; display:inline-block;">{acorde_completo}</span>'
+
+        # 1. Aplicamos el color y transporte a los acordes
+        linea_coloreada = re.sub(patron, aplicar_estilo, linea)
         
-        # Procesar acordes
-        linea_html = re.sub(patron, reemplazar, linea)
-        # Forzar alineación de espacios
-        linea_final = linea_html.replace(" ", "&nbsp;")
+        # 2. Reemplazamos espacios por espacios rígidos para mantener alineación
+        linea_final = linea_coloreada.replace(" ", "&nbsp;")
         lineas_procesadas.append(linea_final)
         
     return "<br>".join(lineas_procesadas)
 
-# --- INTERFAZ STREAMLIT ---
+# --- INTERFAZ ---
 st.set_page_config(page_title="ChordMaster Pro", layout="wide")
 
+# CSS para forzar el visor
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap');
-    textarea { font-family: 'JetBrains Mono', monospace !important; font-size: 16px !important; line-height: 1.2 !important; background-color: #000 !important; color: #ddd !important; }
-    .visor-musical { border-radius: 12px; padding: 25px; background-color: #121212; border: 1px solid #444; font-family: 'JetBrains Mono', monospace !important; line-height: 1.2; overflow-x: auto; color: white; }
-    .meta-data { color: #888; font-style: italic; margin-bottom: 5px; font-size: 0.9em; }
+    textarea { font-family: 'JetBrains Mono', monospace !important; font-size: 16px !important; line-height: 1.2 !important; }
+    .visor-musical { 
+        border-radius: 12px; 
+        padding: 25px; 
+        line-height: 1.3; 
+        font-family: 'JetBrains Mono', monospace !important; 
+        white-space: normal; 
+        overflow-x: auto;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -99,77 +103,67 @@ df = cargar_datos()
 categorias = cargar_categorias()
 
 # --- SIDEBAR ---
-st.sidebar.title("🎸 Menú")
-menu = st.sidebar.selectbox("Ir a:", ["🏠 Cantar / Vivo", "➕ Agregar Canción", "📂 Gestionar / Editar", "⚙️ Configurar Categorías"])
-
-c_bg = st.sidebar.color_picker("Fondo Visor", "#121212")
-c_txt = st.sidebar.color_picker("Color Letra", "#FFFFFF")
+st.sidebar.title("🎸 Ajustes")
+menu = st.sidebar.selectbox("Ir a:", ["🏠 Cantar", "➕ Agregar", "📂 Gestionar", "⚙️ Categorías"])
+c_bg = st.sidebar.color_picker("Fondo", "#000000")
+c_txt = st.sidebar.color_picker("Letra", "#FFFFFF")
 c_chord = st.sidebar.color_picker("Color Acordes", "#FFD700")
-f_size = st.sidebar.slider("Tamaño Fuente", 12, 45, 20)
+f_size = st.sidebar.slider("Tamaño", 12, 40, 22)
 
-# --- MÓDULO: AGREGAR ---
-if menu == "➕ Agregar Canción":
+if menu == "➕ Agregar":
     st.header("➕ Nueva Canción")
-    col1, col2, col3 = st.columns(3)
-    titulo_n = col1.text_input("Título")
-    autor_n = col2.text_input("Autor")
-    cat_n = col3.selectbox("Categoría", categorias)
-    letra_n = st.text_area("Editor (Alinea los acordes con espacios):", height=400, placeholder="Ejemplo:\n  C       G\nAleluya, Aleluya")
+    c1, c2, c3 = st.columns(3)
+    t_n = c1.text_input("Título")
+    a_n = c2.text_input("Autor")
+    cat_n = c3.selectbox("Categoría", categorias)
+    letra_n = st.text_area("Letra y Acordes:", height=300)
     
     if letra_n:
         preview = procesar_texto_estricto(letra_n, 0, c_chord)
-        st.markdown(f'<div class="visor-musical" style="background:{c_bg}; color:{c_txt}; font-size:{f_size}px;"><div class="meta-data">{titulo_n} - {autor_n}</div>{preview}</div>', unsafe_allow_html=True)
-        if st.button("💾 GUARDAR"):
-            nueva = pd.DataFrame([[titulo_n, autor_n if autor_n else "Anónimo", cat_n, letra_n]], columns=df.columns)
-            df = pd.concat([df, nueva], ignore_index=True)
-            guardar_datos(df)
-            st.success("¡Guardada!"); st.rerun()
+        st.markdown(f'<div class="visor-musical" style="background:{c_bg}; color:{c_txt}; font-size:{f_size}px;">{preview}</div>', unsafe_allow_html=True)
+        if st.button("Guardar"):
+            df = pd.concat([df, pd.DataFrame([[t_n, a_n, cat_n, letra_n]], columns=df.columns)], ignore_index=True)
+            guardar_datos(df); st.rerun()
 
-# --- MÓDULO: CANTAR CON FILTROS ---
-elif menu == "🏠 Cantar / Vivo":
-    st.header("🏠 Biblioteca en Vivo")
+elif menu == "🏠 Cantar":
     col_f1, col_f2 = st.columns([2, 1])
-    with col_f1: busqueda = st.text_input("🔍 Buscar por título o autor...")
-    with col_f2: filtro_cat = st.selectbox("📂 Filtrar por Categoría", ["Todas"] + categorias)
+    busq = col_f1.text_input("🔍 Buscar...")
+    f_cat = col_f2.selectbox("📂 Categoría", ["Todas"] + categorias)
     
     df_v = df.copy()
-    if busqueda:
-        df_v = df_v[df_v['Título'].str.contains(busqueda, case=False, na=False) | df_v['Autor'].str.contains(busqueda, case=False, na=False)]
-    if filtro_cat != "Todas":
-        df_v = df_v[df_v['Categoría'] == filtro_cat]
+    if busq: df_v = df_v[df_v['Título'].str.contains(busq, case=False) | df_v['Autor'].str.contains(busq, case=False)]
+    if f_cat != "Todas": df_v = df_v[df_v['Categoría'] == f_cat]
 
     if not df_v.empty:
-        sel_c = st.selectbox("Seleccionar canción:", df_v['Título'])
-        data = df_v[df_v['Título'] == sel_c].iloc[0]
+        sel = st.selectbox("Canción:", df_v['Título'])
+        cancion = df_v[df_v['Título'] == sel].iloc[0]
+        tp = st.number_input("Transportar", -6, 6, 0)
         
-        tp = st.number_input("Transportar (Semitonos)", -6, 6, 0)
-        final_html = procesar_texto_estricto(data['Letra'], tp, c_chord)
-        
-        st.markdown(f'<div class="visor-musical" style="background:{c_bg}; color:{c_txt}; font-size:{f_size}px;"><div style="font-size:1.2em; font-weight:bold;">{data["Título"]}</div><div class="meta-data">{data["Autor"]} | {data["Categoría"]}</div><hr style="border-color:#333;">{final_html}</div>', unsafe_allow_html=True)
-    else:
-        st.info("No se encontraron canciones con esos filtros.")
+        final_html = procesar_texto_estricto(cancion['Letra'], tp, c_chord)
+        st.markdown(f'''
+            <div class="visor-musical" style="background:{c_bg}; color:{c_txt}; font-size:{f_size}px;">
+                <div style="border-bottom: 1px solid #444; margin-bottom: 10px;">
+                    <b style="font-size: 1.2em;">{cancion["Título"]}</b><br>
+                    <small style="color: gray;">{cancion["Autor"]} | {cancion["Categoría"]}</small>
+                </div>
+                {final_html}
+            </div>
+        ''', unsafe_allow_html=True)
 
-# --- GESTIONAR ---
-elif menu == "📂 Gestionar / Editar":
-    st.header("📂 Gestión de Biblioteca")
-    for i, row in df.iterrows():
-        with st.expander(f"📝 {row['Título']}"):
-            c1, c2, c3 = st.columns(3)
-            nt = c1.text_input("Título", row['Título'], key=f"t{i}")
-            na = c2.text_input("Autor", row['Autor'], key=f"a{i}")
-            nc = c3.selectbox("Categoría", categorias, index=categorias.index(row['Categoría']) if row['Categoría'] in categorias else 0, key=f"c{i}")
-            nl = st.text_area("Letra", row['Letra'], height=200, key=f"l{i}")
-            if st.button("Actualizar", key=f"b{i}"):
-                df.at[i, 'Título'], df.at[i, 'Autor'], df.at[i, 'Categoría'], df.at[i, 'Letra'] = nt, na, nc, nl
-                guardar_datos(df); st.success("Actualizado"); st.rerun()
-            if st.button("Eliminar", key=f"d{i}"):
+elif menu == "📂 Gestionar":
+    st.header("📂 Biblioteca")
+    for i, r in df.iterrows():
+        with st.expander(f"{r['Título']}"):
+            nl = st.text_area("Editar Letra", r['Letra'], key=f"ed{i}")
+            if st.button("Actualizar", key=f"up{i}"):
+                df.at[i, 'Letra'] = nl
+                guardar_datos(df); st.rerun()
+            if st.button("Borrar", key=f"del{i}"):
                 df = df.drop(i).reset_index(drop=True); guardar_datos(df); st.rerun()
 
-# --- CONFIGURAR CATEGORÍAS ---
-elif menu == "⚙️ Configurar Categorías":
+elif menu == "⚙️ Categorías":
     st.header("⚙️ Categorías")
-    n_cat = st.text_input("Nueva:")
+    nueva = st.text_input("Nueva:")
     if st.button("Añadir"):
-        if n_cat and n_cat not in categorias:
-            categorias.append(n_cat); guardar_categorias(categorias); st.rerun()
+        categorias.append(nueva); guardar_categorias(categorias); st.rerun()
     st.write(categorias)
