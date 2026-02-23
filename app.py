@@ -77,7 +77,9 @@ def procesar_texto_final(texto, semitonos):
 
 # --- INTERFAZ STREAMLIT ---
 st.set_page_config(page_title="ChordMaster Pro", layout="wide")
-if 'setlist' not in st.session_state: st.session_state.setlist = cargar_setlist()
+
+if 'setlist' not in st.session_state: 
+    st.session_state.setlist = cargar_setlist()
 
 # Sidebar
 st.sidebar.title("🎸 ChordMaster")
@@ -87,12 +89,12 @@ c_bg = st.sidebar.color_picker("Fondo Visor", "#FFFFFF")
 c_txt = st.sidebar.color_picker("Color Letra", "#000000")
 f_size = st.sidebar.slider("Tamaño Fuente", 12, 45, 18)
 
-# CSS CLAVE: Sincroniza la fuente de lo que escribes (textarea) con lo que ves (visor)
+# CSS PARA MANTENER DISEÑO ESPEJO Y FUENTE MONOESPACIADA
 st.markdown(f"""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Courier+Prime&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
     
-    /* Aplicar la misma fuente a ambos */
+    /* Forzamos la misma fuente en el editor y el visor */
     .visor-musical, textarea {{ 
         font-family: 'Courier Prime', monospace !important; 
     }}
@@ -101,7 +103,9 @@ st.markdown(f"""
         background-color: {c_bg} !important; 
         color: {c_txt} !important; 
         border-radius: 12px; padding: 25px; border: 1px solid #ddd; 
-        line-height: 1.2; font-size: {f_size}px; 
+        line-height: 1.2 !important; 
+        font-size: {f_size}px !important;
+        overflow-x: auto;
     }}
     
     .stTextArea textarea {{
@@ -109,7 +113,7 @@ st.markdown(f"""
         line-height: 1.2 !important;
     }}
     
-    .visor-musical b {{ font-weight: 900 !important; color: inherit; white-space: nowrap; }}
+    .visor-musical b {{ font-weight: 700 !important; color: inherit; white-space: nowrap; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -154,7 +158,7 @@ elif menu == "📋 Mi Setlist":
                     col_info, col_del = st.columns([4, 1])
                     col_info.write(f"**Autor:** {data['Autor']} | **Categoría:** {data['Categoría']}")
                     
-                    if col_del.button("🗑️ Quitar del Setlist", key=f"del_sl_{i}"):
+                    if col_del.button("🗑️ Quitar", key=f"del_sl_{i}"):
                         st.session_state.setlist.pop(i)
                         guardar_setlist(st.session_state.setlist); st.rerun()
                     
